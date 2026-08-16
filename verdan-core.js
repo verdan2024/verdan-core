@@ -186,22 +186,44 @@ function gm(t, wait){
   e.className = wait ? 'wait' : '';
 }
 
-/* ── 화면 높이 고정 ─────────────────────────────────
-   껍데기(#app · #gate)의 높이를 "실제로 보이는 높이"에 맞춥니다.
+/* ── 화면을 보이는 영역에 못박기 ─────────────────────
+   body 의 높이와 위치를 "지금 실제로 보이는 영역"에 정확히 맞춥니다.
 
-   [왜 100% 로 두면 안 되는가]
-   iOS 에서 키보드가 올라와도 레이아웃 높이(100%)는 그대로입니다.
-   그래서 입력칸이 키보드 뒤로 숨습니다. visualViewport 는 키보드를
-   뺀 진짜 보이는 높이를 알려주므로 그 값을 직접 넣어 줍니다.
+   [키보드가 올라올 때 iOS 가 하는 일은 두 가지입니다]
+     ① 보이는 높이를 키보드만큼 줄인다      → visualViewport.height
+     ② 화면 전체를 위로 밀어 올린다         → visualViewport.offsetTop
+   ①만 처리하면 앱은 짧아졌는데 위로도 밀려서, 헤더가 화면 밖으로
+   나가고 입력칸이 상태바에 붙어 버립니다. 그래서 ② 만큼 도로
+   내려(translateY) 제자리에 고정시킵니다.
 
-   문서 자체는 CSS 에서 overflow:hidden 으로 잠가 두었기 때문에,
-   이 높이만 맞으면 화면이 흔들리거나 고무줄처럼 딸려오지 않습니다. */
+   pageYOffset 을 0 으로 되돌리는 것은, 입력칸을 탭했을 때 iOS 가
+   "보이게 해주겠다"며 문서를 스크롤해 버리는 것을 취소하기 위해서입니다.
+   우리는 이미 입력칸을 키보드 바로 위에 두므로 그 도움이 필요 없습니다. */
 function applyViewportHeight(){
+  var b = document.body;
+  if (!b) return;
   var vv = window.visualViewport;
   var h = (vv ? vv.height : window.innerHeight) + 'px';
+  var off = vv ? Math.round(vv.offsetTop) : 0;
+  var tr = off ? ('translateY(' + off + 'px)') : '';
+
+  if (b.style.height !== h) b.style.height = h;
+  if (b.style.transform !== tr) b.style.transform = tr;
+
+  /* 예전 버전이 #app · #gate 에 넣어 둔 높이가 남아 있으면 지웁니다 */
   var a = $('app'), g = $('gate');
-  if (a && a.style.height !== h) a.style.height = h;
-  if (g && g.style.height !== h) g.style.height = h;
+  if (a && a.style.height) a.style.height = '';
+  if (g && g.style.height) g.style.height = '';
+
+  if (window.pageYOffset) window.scrollTo(0, 0);
+}
+
+/* 키보드가 오르내리는 동안에는 값이 연속으로 바뀝니다.
+   그때마다 계산하면 버벅이므로 화면을 그리기 직전에 한 번만 처리합니다. */
+var vpT = null;
+function applyViewportSoon(){
+  if (vpT) return;
+  vpT = requestAnimationFrame(function () { vpT = null; applyViewportHeight(); });
 }
 
 /* ── 워터마크 ───────────────────────────────────────
@@ -221,6 +243,15 @@ function watermark(on){
   e.innerHTML = h;
   e.style.display = 'block';
 }
+/* offsetTop 은 resize 가 아니라 scroll 로 바뀝니다. 둘 다 들어야 합니다. */
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', applyViewportSoon);
+  window.visualViewport.addEventListener('scroll', applyViewportSoon);
+}
+/* 입력칸을 탭한 직후 iOS 가 화면을 미는 것을 뒤따라가 되돌립니다 */
+document.addEventListener('focusin', function () { setTimeout(applyViewportHeight, 250); });
+document.addEventListener('focusout', function () { setTimeout(applyViewportHeight, 250); });
+
 var wmT = null;
 window.addEventListener('resize', function () {
   applyViewportHeight();
@@ -333,7 +364,8 @@ function applyTabPerm(){
    innerHeight 를 쓰면 입력창이 키보드 뒤로 숨습니다.
    4개 앱이 이 계산 하나만 씁니다. */
 function fitChat(){
-  /* 껍데기 높이만 맞추면 채팅 판은 flex 로 남은 자리를 채웁니다.
+  /* 보이는 영역만 맞추면 채팅 판은 flex 로 남은 자리를 채웁니다.
+     입력줄은 그 판의 맨 아래 = 키보드 바로 위에 놓입니다.
      예전처럼 채팅 판에 높이를 직접 계산해 넣지 않습니다. */
   applyViewportHeight();
   if (!CFG || !CFG.chatPage) return;
@@ -344,11 +376,12 @@ function fitChat(){
 }
 /* 키보드가 오르내릴 때마다 다시 계산하면 입력이 버벅입니다.
    scroll 은 듣지 않고, resize 도 잠시 모아서 한 번만 처리합니다. */
-var fitT = null;
-function fitChatSoon(){ clearTimeout(fitT); fitT = setTimeout(fitChat, 120); }
-if (window.visualViewport) window.visualViewport.addEventListener('resize', fitChatSoon);
-window.addEventListener('resize', fitChatSoon);
-window.addEventListener('orientationchange', function () { setTimeout(fitChat, 300); });
+/* 화면 크기를 맞추는 일은 applyViewportSoon 이 전담합니다.
+   여기서는 방향 전환처럼 늦게 반영되는 경우만 뒤따라 한 번 더 봅니다. */
+window.addEventListener('orientationchange', function () {
+  setTimeout(applyViewportHeight, 300);
+  setTimeout(fitChat, 350);
+});
 /* 화면을 처음 그릴 때도 한 번 맞춥니다 */
 applyViewportHeight();
 
@@ -386,7 +419,13 @@ function chatInit(onSend){
     ta.style.height = Math.min(ta.scrollHeight, 96) + 'px';
   }
   ta.addEventListener('input', grow);
-  ta.addEventListener('focus', function () { setTimeout(fitChat, 200); });
+  /* 탭한 직후 · 키보드가 다 올라온 뒤 두 번 맞춰 줍니다.
+     기기에 따라 키보드 애니메이션이 끝나는 시점이 다릅니다. */
+  ta.addEventListener('focus', function () {
+    applyViewportHeight();
+    setTimeout(function () { applyViewportHeight(); chatScrollEnd(); }, 250);
+    setTimeout(function () { applyViewportHeight(); chatScrollEnd(); }, 600);
+  });
 
   /* 넓은 화면에서만 Enter 로 보냅니다.
      모바일에서 Enter 가 전송이면 줄바꿈을 할 수 없습니다. */
