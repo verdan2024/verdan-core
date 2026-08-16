@@ -1,19 +1,52 @@
-/*! verdan-core.js v1.0.0 — 버던 사내 웹앱 공통 코어
+/*! verdan-core.js v1.1.0 — 버던 사내 웹앱 공통 코어
  *
  *  이 파일은 공개 저장소에 올라갑니다. 비밀번호 · Apps Script URL 등
  *  비밀에 해당하는 값은 절대 여기에 두지 마세요. 전부 앱 쪽 cfg 로 넘깁니다.
  *
- *  교체 방법 : 이 파일을 고치고 각 앱의 <script src="...?v=1.0.1"> 숫자만 올립니다.
+ *  교체 방법 : 이 파일을 고치고 각 앱의 <script src="...?v=1.1.0"> 숫자만 올립니다.
+ *
+ *  v1.0.0 → v1.1.0
+ *   [로그인]  이름 → 비밀번호 순서 고정 / 버튼 '로그인' 고정 /
+ *             안내·대기 문구를 코어가 소유 (CFG.hint 옵션 폐지)
+ *   [헤더]    이름 · 권한 텍스트 + 외곽선 로그아웃 / 헤더·탭 고정(sticky)
+ *   [채팅]    코어가 입력줄을 소유 — textarea 자동 높이, 원형 화살표 버튼,
+ *             타이핑 점 3개, 토큰 사용량 줄, 되묻기 칩(네/아니오),
+ *             키보드 높이 계산 일원화
+ *   [접근로그] 접속 / 기록 / 채팅 3분류 표를 코어가 그림.
+ *             채팅은 [더보기] → 질문·답변 분리, AI 배지
+ *   [권한]    서버가 보낸 features 로 기능이 없는 탭은 감춤
  */
 (function (global) {
 'use strict';
 
-var CORE_VERSION = '1.0.0';
+var CORE_VERSION = '1.1.0';
+
+/* ── 코어가 소유하는 문구 ───────────────────────────
+   앱마다 다르게 쓰던 문구를 여기 한 곳으로 모았습니다.
+   앱에서 바꿀 수 없습니다. 바꾸려면 이 파일을 고칩니다. */
+var TXT = {
+  loginBtn : '로그인',
+  waiting  : '접속 중입니다. 잠시만 기다려주세요.',
+  hint     : '본인 이름을 입력하세요. 접근로그에 기록됩니다.',
+  noName   : '이름을 입력하세요.',
+  noPw     : '비밀번호를 입력하세요.',
+  timeout  : '서버 응답이 없습니다. [로그인]을 다시 눌러주세요.',
+  pwChanged: '비밀번호가 변경되었습니다. 다시 입력해 주세요.',
+  yes      : '네, 물어봐 주세요',
+  no       : '아니오'
+};
+
+/* 접근로그 탭 이름 · 마지막 열 이름 */
+var LOGTAB = {
+  access: { label: '접속', col: '권한',       empty: '접속 기록이 없습니다.' },
+  work  : { label: '기록', col: '작업 내용',  empty: '기록이 없습니다.' },
+  chat  : { label: '채팅', col: '질문 · 답변', empty: '채팅 기록이 없습니다.' }
+};
 
 /* ── 내부 상태 ─────────────────────────────────────── */
 var CFG = null;
-var PW = '', USER = '', ROLE = '', DATA = null;
-var BUSY = false, LAST = 0, LOGS = [], accessLoaded = false;
+var PW = '', USER = '', ROLE = '', DATA = null, FEAT = null;
+var BUSY = false, LAST = 0, LOGS = [], accessLoaded = false, LOGVIEW = '';
 var IDEM = {};          /* 멱등키 캐시 — 같은 작업의 재시도를 서버가 알아보게 함 */
 var CURPAGE = '';
 var booted = false;
@@ -70,8 +103,7 @@ function toggleBox(id){
   e.style.display = hidden ? (e.tagName === 'TR' ? 'table-row' : 'block') : 'none';
 }
 
-/* null 안전 헬퍼 — HTML 에서 요소를 지워도 코드가 멈추지 않게 합니다.
-   기존 앱이 logout() 에서 멈췄던 원인이 바로 이 방어가 없어서였습니다. */
+/* null 안전 헬퍼 — HTML 에서 요소를 지워도 코드가 멈추지 않게 합니다. */
 function setHTML(id, v){ var e = $(id); if (e) e.innerHTML = v; }
 function setVal(id, v){ var e = $(id); if (e) e.value = (v || ''); }
 function setDisp(id, v){ var e = $(id); if (e) e.style.display = v; }
@@ -94,8 +126,7 @@ function isTimeout(e){ return e && (e.name === 'AbortError' || e.name === 'Timeo
 
 /* opt = { mode:'read'|'write'|'ai', idem:'upload:123' }
    idem 을 주면 같은 작업을 다시 보낼 때 같은 reqId 가 실려 나갑니다.
-   서버가 reqId 를 기억해 두면 중복 저장이 원천 차단됩니다.
-   (서버가 아직 대응하지 않았다면 그냥 무시되는 여분 파라미터일 뿐입니다) */
+   서버가 reqId 를 기억해 두면 중복 저장이 원천 차단됩니다. */
 async function api(params, opt){
   opt = opt || {};
   var mode = opt.mode || 'read';
@@ -137,7 +168,8 @@ function failMsg(e, what){
 function busy(on){
   BUSY = on;
   var b = $('loginBtn');
-  if (b) { b.disabled = on; b.textContent = on ? '확인 중...' : '확인'; }
+  /* 버튼 글자는 늘 '로그인' 입니다. 눌린 상태만 비활성으로 보여줍니다. */
+  if (b) { b.disabled = on; b.textContent = TXT.loginBtn; }
 }
 /* 헤더의 갱신 시각. 실패하면 붉게 경고합니다 —
    예전 숫자를 최신인 줄 알고 발주·정산하는 사고를 막기 위해서입니다. */
@@ -147,7 +179,20 @@ function stamp(text, stale){
   e.textContent = text;
   e.className = 'sub' + (stale ? ' stale' : '');
 }
-function gm(t){ setText('gateMsg', t || ''); }
+function gm(t, wait){
+  var e = $('gateMsg');
+  if (!e) return;
+  e.textContent = t || '';
+  e.className = wait ? 'wait' : '';
+}
+
+/* 헤더 높이를 재서 CSS 변수에 넣습니다.
+   탭이 헤더 바로 아래에 붙어 함께 고정되려면 이 값이 필요합니다. */
+function measureHeader(){
+  var h = $('header');
+  if (!h) return;
+  document.documentElement.style.setProperty('--v-hd', h.offsetHeight + 'px');
+}
 
 /* ── 워터마크 ───────────────────────────────────────
    화면을 덮는 격자로 '이름 · 접속시각'을 반복해 깔아 둡니다. */
@@ -168,6 +213,7 @@ function watermark(on){
 }
 var wmT = null;
 window.addEventListener('resize', function () {
+  measureHeader();
   if (!PW) return;
   clearTimeout(wmT);
   wmT = setTimeout(function () { watermark(true); }, 200);
@@ -178,7 +224,12 @@ window.addEventListener('resize', function () {
 function perm(){
   return (CFG.perm && CFG.perm[ROLE]) || CFG.noperm || { label: '—' };
 }
-function can(k){ return !!perm()[k]; }
+function can(k){
+  /* 서버가 features 로 "그 기능 자체가 없다"고 하면 권한과 무관하게 닫습니다.
+     (예: 재고 앱에는 채팅 기능이 없습니다) */
+  if (FEAT && FEAT[k] === false) return false;
+  return !!perm()[k];
+}
 
 /* ── 게이트 · 헤더 생성 ────────────────────────────── */
 function buildChrome(){
@@ -190,15 +241,16 @@ function buildChrome(){
 
   var gate = document.createElement('div');
   gate.id = 'gate';
+  /* 입력 순서는 항상 이름 → 비밀번호 입니다. 앱에서 바꿀 수 없습니다. */
   gate.innerHTML =
     '<div class="box">' +
-      '<div class="logo">' + (CFG.icon || '📁') + '</div>' +
+      '<div class="logo">' + iconHtml + '</div>' +
       '<h1>' + esc(CFG.title) + '</h1>' +
       '<input type="text" id="nm" placeholder="이름" autocomplete="name" maxlength="20">' +
       '<input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password">' +
-      '<button id="loginBtn">확인</button>' +
+      '<button id="loginBtn">' + TXT.loginBtn + '</button>' +
       '<div id="gateMsg"></div>' +
-      '<div class="hint">' + esc(CFG.hint || '본인 이름을 입력하세요. 접근로그에 기록됩니다.') +
+      '<div class="hint">' + TXT.hint +
         '<br>' + esc(CFG.appVersion || '') + ' · core ' + CORE_VERSION + '</div>' +
     '</div>';
 
@@ -209,11 +261,12 @@ function buildChrome(){
   wm.id = 'wm'; wm.setAttribute('aria-hidden', 'true');
   document.body.appendChild(wm);
 
+  /* 헤더 — 왼쪽 아이콘·앱이름·갱신시각 / 오른쪽 이름·권한 + 로그아웃 */
   setHTML('header',
     '<div class="icon">' + iconHtml + '</div>' +
     '<div><div class="title">' + esc(CFG.title) + '</div>' +
       '<div class="sub" id="updated"></div></div>' +
-    '<span class="role" id="roleBadge"></span>' +
+    '<span class="who" id="whoBox"></span>' +
     '<button class="logoutBtn" id="logoutBtn">로그아웃</button>');
 
   $('nm').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('pw').focus(); });
@@ -222,6 +275,8 @@ function buildChrome(){
   $('logoutBtn').addEventListener('click', function () {
     if (confirm('로그아웃할까요?')) logout();
   });
+
+  measureHeader();
 }
 
 /* ── 탭 ─────────────────────────────────────────────
@@ -253,15 +308,20 @@ function firstPage(){
   return b ? b.dataset.page : 'p1';
 }
 function applyTabPerm(){
+  var shown = null;
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button[data-page]'), function (b) {
     var need = b.dataset.perm;
-    b.style.display = (!need || can(need)) ? 'block' : 'none';
+    var ok = (!need || can(need));
+    b.style.display = ok ? 'block' : 'none';
+    if (ok && !shown) shown = b.dataset.page;
   });
+  return shown;
 }
 
 /* ── 채팅 높이 ──────────────────────────────────────
    visualViewport 는 키보드가 올라온 뒤의 실제 보이는 높이를 알려줍니다.
-   innerHeight 를 쓰면 입력창이 키보드 뒤로 숨습니다. */
+   innerHeight 를 쓰면 입력창이 키보드 뒤로 숨습니다.
+   4개 앱이 이 계산 하나만 씁니다. */
 function fitChat(){
   if (!CFG || !CFG.chatPage) return;
   var p = $(CFG.chatPage);
@@ -285,14 +345,152 @@ function fitChatSoon(){ clearTimeout(fitT); fitT = setTimeout(fitChat, 120); }
 if (window.visualViewport) window.visualViewport.addEventListener('resize', fitChatSoon);
 window.addEventListener('resize', fitChatSoon);
 
+/* ══════════════════════════════════════════════════
+   채팅 — 코어가 입력줄과 말풍선을 소유합니다
+   --------------------------------------------------
+   앱 HTML 은 아래 뼈대만 두면 됩니다.
+     <div id="p4" class="page chat">
+       <div id="chatTop"></div>
+       <div id="chatScroll"><div id="chatBody" data-clear></div></div>
+       <div id="chatFoot">
+         <div id="chatChips" class="chips" data-clear></div>
+         <div id="chatBar"></div>          ← 코어가 채웁니다
+         <div class="sub2" id="chatNote"></div>
+       </div>
+     </div>
+   ══════════════════════════════════════════════════ */
+var CHAT_SEND = null;
+
+function chatInit(onSend){
+  CHAT_SEND = onSend;
+  var bar = $('chatBar');
+  if (!bar) return;
+
+  /* placeholder 는 넣지 않습니다. 예시 문구를 없애기로 했습니다. */
+  bar.innerHTML =
+    '<textarea id="qInput" rows="1" data-reset autocomplete="off"></textarea>' +
+    '<button class="send" id="askBtn" aria-label="보내기">↑</button>';
+
+  var ta = $('qInput'), btn = $('askBtn');
+
+  /* 글이 길어지면 입력칸만 늘어납니다(최대 4줄). 버튼 크기는 그대로입니다. */
+  function grow(){
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 96) + 'px';
+  }
+  ta.addEventListener('input', grow);
+  ta.addEventListener('focus', function () { setTimeout(fitChat, 200); });
+
+  /* 넓은 화면에서만 Enter 로 보냅니다.
+     모바일에서 Enter 가 전송이면 줄바꿈을 할 수 없습니다. */
+  ta.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 700) {
+      e.preventDefault(); chatSend();
+    }
+  });
+  btn.addEventListener('click', chatSend);
+}
+
+function chatSend(){
+  var ta = $('qInput');
+  if (!ta || !CHAT_SEND) return;
+  var q = (ta.value || '').trim();
+  if (!q) return;
+  ta.value = ''; ta.style.height = 'auto';
+  CHAT_SEND(q);
+}
+
+/** 앱이 칩·예시 버튼에서 부릅니다 */
+function chatAsk(text){
+  if (CHAT_SEND) CHAT_SEND(String(text || '').trim());
+}
+
+/** 보내는 동안 입력을 잠급니다 (아이콘은 그대로 둡니다) */
+function chatBusy(on){
+  var ta = $('qInput'), btn = $('askBtn');
+  if (btn) btn.disabled = !!on;
+  if (ta) ta.disabled = !!on;
+  BUSY = !!on;
+}
+
+function chatScrollEnd(){
+  var sc = $('chatScroll');
+  if (sc) sc.scrollTop = sc.scrollHeight;
+}
+
+/** who : 'me' | 'bot' | 'ai' */
+function say(who, text){
+  var b = $('chatBody');
+  if (!b) return null;
+  var d = document.createElement('div');
+  d.className = 'cmsg ' + who;
+  d.innerHTML = linkify(text);
+  b.appendChild(d);
+  chatScrollEnd();
+  return d;
+}
+
+/** 답변을 생각하는 동안 점 세 개가 움직입니다. 지울 때 el.remove() */
+function typing(){
+  var b = $('chatBody');
+  if (!b) return { remove: function () {} };
+  var d = document.createElement('div');
+  d.className = 'cmsg bot';
+  d.innerHTML = '<div class="typing"><i></i><i></i><i></i></div>';
+  b.appendChild(d);
+  chatScrollEnd();
+  return d;
+}
+
+/** AI 답변 아래에 토큰 사용량을 붙입니다 */
+function tokens(el, usage){
+  if (!el || !usage) return;
+  var u = document.createElement('div');
+  u.className = 'tok';
+  u.textContent = '토큰 ' + n(usage.total) + '개 사용 (입력 ' + n(usage.input) +
+                  ' · 출력 ' + n(usage.output) + ')';
+  el.appendChild(u);
+  chatScrollEnd();
+}
+
+/** 칩 목록 — [{ label:'…', on:함수, gray:true }] */
+function chips(list){
+  var box = $('chatChips');
+  if (!box) return;
+  box.innerHTML = '';
+  (list || []).forEach(function (c) {
+    var b = document.createElement('button');
+    b.className = 'chip' + (c.gray ? ' gray' : '');
+    b.textContent = c.label;
+    b.onclick = c.on;
+    box.appendChild(b);
+  });
+  chatScrollEnd();
+}
+
+/** 규칙으로 못 푼 질문 — 되묻기. 문구는 4개 앱이 똑같습니다. */
+function confirmChips(onYes, onNo){
+  chips([
+    { label: TXT.yes, on: function () { chips([]); if (onYes) onYes(); } },
+    { label: TXT.no,  gray: true, on: function () { chips([]); if (onNo) onNo(); } }
+  ]);
+}
+
+function chatClear(){
+  setHTML('chatBody', '');
+  setHTML('chatChips', '');
+  setVal('qInput', '');
+  var ta = $('qInput'); if (ta) ta.style.height = 'auto';
+}
+
 /* ── 로그인 ─────────────────────────────────────── */
 async function login(){
   if (BUSY) return;
   var nm = ($('nm').value || '').trim();
   var pw = ($('pw').value || '').trim();
-  if (!nm) { gm('이름을 입력하세요.'); return; }
-  if (!pw) { gm('비밀번호를 입력하세요.'); return; }
-  gm('접속 중입니다. 잠시만 기다려주세요.');
+  if (!nm) { gm(TXT.noName); return; }
+  if (!pw) { gm(TXT.noPw); return; }
+  gm(TXT.waiting, true);
   busy(true);
   PW = pw; USER = nm;
   try {
@@ -306,22 +504,25 @@ async function login(){
     start(r);
   } catch (e) {
     PW = ''; USER = '';
-    gm(isTimeout(e) ? '서버 응답이 없습니다. [확인]을 다시 눌러주세요.' : '연결 실패: ' + e.message);
+    gm(isTimeout(e) ? TXT.timeout : '연결 실패: ' + e.message);
   } finally { busy(false); }
 }
 
 function start(r){
   DATA = r; ROLE = r.role;
+  FEAT = r.features || null;   /* 서버가 "이 앱엔 그 기능이 없다"고 알려줍니다 */
   setDisp('gate', 'none');
   setDisp('app', 'flex');
-  setText('roleBadge', perm().label || '—');
-  stamp('갱신 ' + r.updated, false);
+  setText('whoBox', USER + ' · ' + (perm().label || '—'));
+  stamp('갱신 ' + (r.updated || '—'), false);
   watermark(true);
-  applyTabPerm();
+  var first = applyTabPerm();
   accessLoaded = false;
-  LOGS = [];
+  LOGS = []; LOGVIEW = '';
+  measureHeader();
   if (CFG.onStart) CFG.onStart(r);
-  tab(firstPage());
+  tab(first || firstPage());
+  gm('');
 }
 
 /* ── 로그아웃 ───────────────────────────────────────
@@ -333,8 +534,8 @@ function logout(){
     (CFG.legacyKeys || []).forEach(function (k) { localStorage.removeItem(k); });
   } catch (e) {}                       /* 이름은 남겨 재입력을 줄입니다 */
 
-  PW = ''; USER = ''; ROLE = ''; DATA = null;
-  BUSY = false; LAST = 0; LOGS = []; accessLoaded = false; IDEM = {};
+  PW = ''; USER = ''; ROLE = ''; DATA = null; FEAT = null;
+  BUSY = false; LAST = 0; LOGS = []; accessLoaded = false; LOGVIEW = ''; IDEM = {};
   document.body.classList.remove('chatmode');
   if (CFG.onLogout) { try { CFG.onLogout(); } catch (e) {} }
 
@@ -343,7 +544,7 @@ function logout(){
   setDisp('app', 'none');
   setDisp('gate', 'flex');
   setVal('pw', '');
-  setText('roleBadge', '');
+  setText('whoBox', '');
 
   /* data-clear · data-reset 이 붙은 요소를 비웁니다.
      새 화면을 만들 때 속성만 붙이면 자동으로 함께 지워집니다. */
@@ -368,7 +569,8 @@ async function reload(manual){
     if (!r.ok) { logout(); gm('다시 로그인해 주세요.'); return; }
     if (r.role !== ROLE) { start(r); return; }   /* 권한이 바뀌었으면 화면을 다시 짭니다 */
     DATA = r;
-    stamp('갱신 ' + r.updated, false);
+    if (r.features) FEAT = r.features;
+    stamp('갱신 ' + (r.updated || '—'), false);
     if (CFG.onData) CFG.onData(r);
   } catch (e) {
     /* 끊긴 요청으로 로그아웃시키지는 않되, 화면 숫자가 예전 것임은 반드시 보이게 합니다. */
@@ -380,18 +582,114 @@ async function reload(manual){
 /* 앱이 쓰기 응답을 받았을 때 화면을 갱신하는 통로 */
 function setData(r){
   DATA = r; LAST = Date.now();
+  if (r && r.features) FEAT = r.features;
   if (r && r.updated) stamp('갱신 ' + r.updated, false);
   if (CFG.onData) CFG.onData(r);
 }
 
-/* ── 접근로그 ─────────────────────────────────────── */
+/* ══════════════════════════════════════════════════
+   접근로그 — 접속 / 기록 / 채팅
+   --------------------------------------------------
+   앱 HTML 은 아래 두 줄만 두면 됩니다.
+     <div class="seg" id="segLog"></div>
+     <div id="accessBody" data-clear></div>
+   서버가 각 줄에 kind 를 붙여 보냅니다.
+     access 접속·실패 / work 사람이 한 작업 / chat 질문·답변
+     system 자동 처리분 → 코어가 걸러내 화면에 넣지 않습니다.
+   ══════════════════════════════════════════════════ */
 async function fetchLogs(force){
   if (accessLoaded && !force) return LOGS;
   var r = await api({ action: 'access' });
-  if (!r.ok) throw new Error(r.msg || '불러오지 못했습니다.');
+  if (!r.ok) throw new Error(r.msg || r.error || '불러오지 못했습니다.');
   accessLoaded = true;
-  LOGS = r.logs || [];
+  LOGS = (r.logs || []).filter(function (l) { return l.kind !== 'system'; });
   return LOGS;
+}
+
+function logKinds(){
+  /* 앱이 정하지 않으면 3분류를 다 보여줍니다.
+     채팅이 없는 앱은 CFG.logKinds:['access','work'] 로 줄이면 됩니다. */
+  return (CFG && CFG.logKinds) || ['access', 'work', 'chat'];
+}
+
+async function loadLogs(force){
+  var box = CFG.logBox || 'accessBody';
+  setHTML(box, '<div class="box-note">불러오는 중...</div>');
+  try {
+    await fetchLogs(force);
+    logView(LOGVIEW || logKinds()[0]);
+  } catch (e) {
+    setHTML(box, '<div class="box-note">' + esc(failMsg(e, '새로고침을 눌러주세요.')) + '</div>');
+  }
+}
+
+function buildLogSeg(){
+  var seg = $(CFG.logSeg || 'segLog');
+  if (!seg || seg.dataset.built === '1') return;
+  var kinds = logKinds();
+  seg.innerHTML = kinds.map(function (k, i) {
+    return '<button data-k="' + k + '"' + (i === 0 ? ' class="on"' : '') + '>' +
+           LOGTAB[k].label + '</button>';
+  }).join('');
+  seg.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-k]');
+    if (b) logView(b.dataset.k);
+  });
+  seg.dataset.built = '1';
+}
+
+function logResultClass(result){
+  if (result === '실패' || result === '오류' || result === '권한거부') return 'danger';
+  if (result === '입력' || result === '확인' || result === '접속' || result === '채팅') return 'ok';
+  return '';
+}
+
+function logView(k){
+  LOGVIEW = k;
+  buildLogSeg();
+  var seg = $(CFG.logSeg || 'segLog');
+  if (seg) {
+    Array.prototype.forEach.call(seg.querySelectorAll('button[data-k]'), function (b) {
+      b.className = (b.dataset.k === k) ? 'on' : '';
+    });
+  }
+
+  var box = CFG.logBox || 'accessBody';
+  var list = LOGS.filter(function (l) { return l.kind === k; });
+  if (!list.length) { setHTML(box, '<div class="box-note">' + LOGTAB[k].empty + '</div>'); return; }
+
+  var rows = list.map(function (l, i) {
+    var cls = logResultClass(l.result);
+    var head =
+      '<td class="sub2" style="white-space:nowrap">' + esc(l.t) + '</td>' +
+      '<td class="ctr ' + cls + '" style="font-size:12px;white-space:nowrap">' + esc(l.result) + '</td>' +
+      '<td style="font-size:12px;white-space:nowrap">' + esc(l.user) + '</td>';
+
+    /* 채팅은 질문·답변이 길어 [더보기]로 접어 둡니다 */
+    if (k === 'chat') {
+      var id = 'vlg' + i;
+      var badge = l.ai
+        ? ' <span class="badge" style="background:var(--v-ai-bg);border:1px solid var(--v-ai-line);color:var(--v-ai-txt)">AI</span>'
+        : '';
+      return '<tr>' + head +
+        '<td style="font-size:12px"><span class="more" style="margin:0" ' +
+          'onclick="VERDAN.toggleBox(\'' + id + '\')">더보기</span>' + badge + '</td></tr>' +
+        '<tr id="' + id + '" style="display:none"><td colspan="4" style="padding:0 10px 12px">' +
+          '<div class="qa2"><b>질문</b><div>' + esc(l.q || '—') + '</div></div>' +
+          '<div class="qa2"><b>답변</b><div>' + linkify(l.a || '—') + '</div></div>' +
+        '</td></tr>';
+    }
+
+    var tail = (k === 'access') ? esc(l.role || '—') : esc(l.memo);
+    return '<tr>' + head + '<td style="font-size:12px">' + tail + '</td></tr>';
+  }).join('');
+
+  setHTML(box,
+    '<div class="tbl-wrap"><table><thead><tr>' +
+    '<th>시각</th><th>결과</th><th>사용자</th>' +
+    '<th style="text-align:left">' + LOGTAB[k].col + '</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div class="sub2">' + list.length + '건 · 시트에는 최근 500건까지 보관됩니다.</div>');
 }
 
 /* ── 세션 감시 ─────────────────────────────────────
@@ -424,6 +722,7 @@ async function init(cfg){
 
   buildChrome();
   bindTabs();
+  buildLogSeg();
 
   /* 자동 로그인 */
   var sp = null, sn = null;
@@ -436,7 +735,7 @@ async function init(cfg){
   if (!sp || !sn) return;
 
   PW = sp; USER = sn;
-  gm('접속 중입니다. 잠시만 기다려주세요.');
+  gm(TXT.waiting, true);
   busy(true);
   try {
     var r = await api();
@@ -444,11 +743,11 @@ async function init(cfg){
     else {
       PW = ''; USER = '';
       try { localStorage.removeItem(CFG.store.pw); } catch (e) {}
-      gm('비밀번호가 변경되었습니다. 다시 입력해 주세요.');
+      gm(TXT.pwChanged);
     }
   } catch (e) {
     PW = ''; USER = '';
-    gm(isTimeout(e) ? '서버 응답이 없습니다. [확인]을 눌러 다시 시도하세요.' : '');
+    gm(isTimeout(e) ? TXT.timeout : '');
   } finally { busy(false); }
 }
 
@@ -481,7 +780,23 @@ global.VERDAN = {
   watermark: watermark,
   reload: reload,
   logout: logout,
-  fetchLogs: fetchLogs
+
+  /* 채팅 */
+  chatInit: chatInit,
+  chatAsk: chatAsk,
+  chatBusy: chatBusy,
+  chatClear: chatClear,
+  chatScrollEnd: chatScrollEnd,
+  say: say,
+  typing: typing,
+  tokens: tokens,
+  chips: chips,
+  confirmChips: confirmChips,
+
+  /* 접근로그 */
+  fetchLogs: fetchLogs,
+  loadLogs: loadLogs,
+  logView: logView
 };
 
 })(window);
