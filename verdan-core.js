@@ -186,12 +186,22 @@ function gm(t, wait){
   e.className = wait ? 'wait' : '';
 }
 
-/* 헤더 높이를 재서 CSS 변수에 넣습니다.
-   탭이 헤더 바로 아래에 붙어 함께 고정되려면 이 값이 필요합니다. */
-function measureHeader(){
-  var h = $('header');
-  if (!h) return;
-  document.documentElement.style.setProperty('--v-hd', h.offsetHeight + 'px');
+/* ── 화면 높이 고정 ─────────────────────────────────
+   껍데기(#app · #gate)의 높이를 "실제로 보이는 높이"에 맞춥니다.
+
+   [왜 100% 로 두면 안 되는가]
+   iOS 에서 키보드가 올라와도 레이아웃 높이(100%)는 그대로입니다.
+   그래서 입력칸이 키보드 뒤로 숨습니다. visualViewport 는 키보드를
+   뺀 진짜 보이는 높이를 알려주므로 그 값을 직접 넣어 줍니다.
+
+   문서 자체는 CSS 에서 overflow:hidden 으로 잠가 두었기 때문에,
+   이 높이만 맞으면 화면이 흔들리거나 고무줄처럼 딸려오지 않습니다. */
+function applyViewportHeight(){
+  var vv = window.visualViewport;
+  var h = (vv ? vv.height : window.innerHeight) + 'px';
+  var a = $('app'), g = $('gate');
+  if (a && a.style.height !== h) a.style.height = h;
+  if (g && g.style.height !== h) g.style.height = h;
 }
 
 /* ── 워터마크 ───────────────────────────────────────
@@ -213,7 +223,7 @@ function watermark(on){
 }
 var wmT = null;
 window.addEventListener('resize', function () {
-  measureHeader();
+  applyViewportHeight();
   if (!PW) return;
   clearTimeout(wmT);
   wmT = setTimeout(function () { watermark(true); }, 200);
@@ -276,7 +286,7 @@ function buildChrome(){
     if (confirm('로그아웃할까요?')) logout();
   });
 
-  measureHeader();
+  applyViewportHeight();
 }
 
 /* ── 탭 ─────────────────────────────────────────────
@@ -323,20 +333,14 @@ function applyTabPerm(){
    innerHeight 를 쓰면 입력창이 키보드 뒤로 숨습니다.
    4개 앱이 이 계산 하나만 씁니다. */
 function fitChat(){
+  /* 껍데기 높이만 맞추면 채팅 판은 flex 로 남은 자리를 채웁니다.
+     예전처럼 채팅 판에 높이를 직접 계산해 넣지 않습니다. */
+  applyViewportHeight();
   if (!CFG || !CFG.chatPage) return;
   var p = $(CFG.chatPage);
-  if (!p || p.className.indexOf('on') === -1) {
-    document.body.classList.remove('chatmode');
-    if (p) p.style.height = '';       /* p 가 null 일 수 있으므로 반드시 확인 */
-    return;
-  }
-  document.body.classList.add('chatmode');
-  var vv = window.visualViewport;
-  var vh = vv ? vv.height : window.innerHeight;
-  var hd = $('header'), tb = $('tabs');
-  var top = (hd ? hd.offsetHeight : 0) + (tb ? tb.offsetHeight : 0);
-  var h = Math.max(vh - top, 240) + 'px';
-  if (p.style.height !== h) p.style.height = h;   /* 값이 같으면 건드리지 않습니다 */
+  if (!p) return;
+  if (p.style.height) p.style.height = '';   /* v1.0 에서 넣어 둔 값이 남아 있으면 지웁니다 */
+  chatScrollEnd();
 }
 /* 키보드가 오르내릴 때마다 다시 계산하면 입력이 버벅입니다.
    scroll 은 듣지 않고, resize 도 잠시 모아서 한 번만 처리합니다. */
@@ -344,6 +348,9 @@ var fitT = null;
 function fitChatSoon(){ clearTimeout(fitT); fitT = setTimeout(fitChat, 120); }
 if (window.visualViewport) window.visualViewport.addEventListener('resize', fitChatSoon);
 window.addEventListener('resize', fitChatSoon);
+window.addEventListener('orientationchange', function () { setTimeout(fitChat, 300); });
+/* 화면을 처음 그릴 때도 한 번 맞춥니다 */
+applyViewportHeight();
 
 /* ══════════════════════════════════════════════════
    채팅 — 코어가 입력줄과 말풍선을 소유합니다
@@ -519,7 +526,7 @@ function start(r){
   var first = applyTabPerm();
   accessLoaded = false;
   LOGS = []; LOGVIEW = '';
-  measureHeader();
+  applyViewportHeight();
   if (CFG.onStart) CFG.onStart(r);
   tab(first || firstPage());
   gm('');
