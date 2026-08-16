@@ -1,4 +1,4 @@
-/*! verdan-core.js v1.1.1 — 버던 사내 웹앱 공통 코어
+/*! verdan-core.js v1.1.3 — 버던 사내 웹앱 공통 코어
  *
  *  이 파일은 공개 저장소에 올라갑니다. 비밀번호 · Apps Script URL 등
  *  비밀에 해당하는 값은 절대 여기에 두지 마세요. 전부 앱 쪽 cfg 로 넘깁니다.
@@ -21,11 +21,20 @@
  *   · 키보드가 밀어 올린 만큼(visualViewport.offsetTop) 도로 내려 제자리 고정
  *     → 입력칸을 탭해도 헤더가 사라지지 않고, 입력줄만 키보드 위에 붙음
  *   · offsetTop 은 resize 가 아니라 scroll 로 바뀌므로 두 이벤트를 함께 들음
+ *
+ *  v1.1.1 → v1.1.2  (v1.1.1 의 부작용 수정)
+ *   · offsetTop 보정을 "키보드가 올라온 상태"에서만 적용.
+ *     이 값은 손가락으로 화면을 당길 때도 변해서, 무조건 따라가면
+ *     화면이 손가락을 따라다녔음. 키보드가 없으면 아무것도 건드리지 않음.
+ *
+ *  v1.1.2 → v1.1.3
+ *   · "불러오는 중..." · "기록이 없습니다" 를 상자(.box-note) 대신
+ *     글자만 가운데 두는 .note 로 바꿈
  */
 (function (global) {
 'use strict';
 
-var CORE_VERSION = '1.1.1';
+var CORE_VERSION = '1.1.3';
 
 /* ── 코어가 소유하는 문구 ───────────────────────────
    앱마다 다르게 쓰던 문구를 여기 한 곳으로 모았습니다.
@@ -193,35 +202,51 @@ function gm(t, wait){
 }
 
 /* ── 화면을 보이는 영역에 못박기 ─────────────────────
-   body 의 높이와 위치를 "지금 실제로 보이는 영역"에 정확히 맞춥니다.
+   body 를 position:fixed 로 고정해 두고, 키보드가 올라왔을 때만
+   높이와 위치를 손봅니다.
 
    [키보드가 올라올 때 iOS 가 하는 일은 두 가지입니다]
-     ① 보이는 높이를 키보드만큼 줄인다      → visualViewport.height
-     ② 화면 전체를 위로 밀어 올린다         → visualViewport.offsetTop
-   ①만 처리하면 앱은 짧아졌는데 위로도 밀려서, 헤더가 화면 밖으로
-   나가고 입력칸이 상태바에 붙어 버립니다. 그래서 ② 만큼 도로
-   내려(translateY) 제자리에 고정시킵니다.
+     ① 보이는 높이를 키보드만큼 줄인다   → visualViewport.height
+     ② 화면 전체를 위로 밀어 올린다      → visualViewport.offsetTop
+   ①만 처리하면 앱은 짧아졌는데 위로도 밀려서 헤더가 화면 밖으로 나갑니다.
+   그래서 ② 만큼 도로 내려(translateY) 제자리에 붙여 둡니다.
 
-   pageYOffset 을 0 으로 되돌리는 것은, 입력칸을 탭했을 때 iOS 가
-   "보이게 해주겠다"며 문서를 스크롤해 버리는 것을 취소하기 위해서입니다.
-   우리는 이미 입력칸을 키보드 바로 위에 두므로 그 도움이 필요 없습니다. */
+   ⚠️ 그런데 offsetTop 은 키보드 때문에만 변하는 값이 아닙니다.
+      손가락으로 화면을 당길 때도 따라 움직입니다. 그 값을 무조건 따라가면
+      화면이 손가락을 따라다니게 됩니다(v1.1.1 에서 실제로 그랬습니다).
+      그래서 "키보드가 올라온 상태"일 때만 보정합니다.
+      키보드가 없을 때는 아무것도 건드리지 않는 것이 가장 안정적입니다. */
+var KB_MIN = 120;   /* 화면이 이만큼(px) 넘게 줄면 키보드가 올라온 것으로 본다 */
+
+function keyboardOpen(){
+  var vv = window.visualViewport;
+  if (!vv) return false;
+  return (window.innerHeight - vv.height) > KB_MIN;
+}
+
 function applyViewportHeight(){
   var b = document.body;
   if (!b) return;
   var vv = window.visualViewport;
-  var h = (vv ? vv.height : window.innerHeight) + 'px';
-  var off = vv ? Math.round(vv.offsetTop) : 0;
-  var tr = off ? ('translateY(' + off + 'px)') : '';
 
-  if (b.style.height !== h) b.style.height = h;
-  if (b.style.transform !== tr) b.style.transform = tr;
+  if (keyboardOpen()) {
+    var h = Math.round(vv.height) + 'px';
+    var off = Math.round(vv.offsetTop);
+    var tr = off ? ('translateY(' + off + 'px)') : '';
+    if (b.style.height !== h) b.style.height = h;
+    if (b.style.transform !== tr) b.style.transform = tr;
+  } else {
+    /* 키보드가 없을 때는 CSS 의 height:100% 로 되돌립니다.
+       값을 직접 넣지 않는 편이 화면이 흔들리지 않습니다. */
+    if (b.style.height) b.style.height = '';
+    if (b.style.transform) b.style.transform = '';
+    if (window.pageYOffset) window.scrollTo(0, 0);
+  }
 
   /* 예전 버전이 #app · #gate 에 넣어 둔 높이가 남아 있으면 지웁니다 */
   var a = $('app'), g = $('gate');
   if (a && a.style.height) a.style.height = '';
   if (g && g.style.height) g.style.height = '';
-
-  if (window.pageYOffset) window.scrollTo(0, 0);
 }
 
 /* 키보드가 오르내리는 동안에는 값이 연속으로 바뀝니다.
@@ -232,31 +257,16 @@ function applyViewportSoon(){
   vpT = requestAnimationFrame(function () { vpT = null; applyViewportHeight(); });
 }
 
-/* ── 워터마크 ───────────────────────────────────────
-   화면을 덮는 격자로 '이름 · 접속시각'을 반복해 깔아 둡니다. */
-function watermark(on){
-  var e = $('wm');
-  if (!e) return;
-  if (!on || !USER) { e.style.display = 'none'; e.innerHTML = ''; return; }
-  var d = new Date(), p2 = function (x) { return String(x).padStart(2, '0'); };
-  var txt = USER + ' · ' + d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) +
-            ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
-  var h = '';
-  for (var y = -120; y < window.innerHeight + 200; y += 130)
-    for (var x = -180; x < window.innerWidth + 240; x += 210)
-      h += '<span style="left:' + x + 'px;top:' + y + 'px">' + esc(txt) + '</span>';
-  e.style.setProperty('--wm-op', (CFG && CFG.wmOpacity) || 0.05);
-  e.innerHTML = h;
-  e.style.display = 'block';
-}
-/* offsetTop 은 resize 가 아니라 scroll 로 바뀝니다. 둘 다 들어야 합니다. */
+/* resize 는 키보드가 오르내릴 때 옵니다. 이건 항상 듣습니다.
+   scroll 은 손가락으로 당길 때도 오므로, 키보드가 올라와 있을 때만 반응합니다. */
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', applyViewportSoon);
-  window.visualViewport.addEventListener('scroll', applyViewportSoon);
+  window.visualViewport.addEventListener('scroll', function () {
+    if (keyboardOpen()) applyViewportSoon();
+  });
 }
-/* 입력칸을 탭한 직후 iOS 가 화면을 미는 것을 뒤따라가 되돌립니다 */
-document.addEventListener('focusin', function () { setTimeout(applyViewportHeight, 250); });
-document.addEventListener('focusout', function () { setTimeout(applyViewportHeight, 250); });
+/* 키보드가 내려간 뒤 남은 자리를 정리합니다 */
+document.addEventListener('focusout', function () { setTimeout(applyViewportHeight, 300); });
 
 var wmT = null;
 window.addEventListener('resize', function () {
@@ -427,10 +437,11 @@ function chatInit(onSend){
   ta.addEventListener('input', grow);
   /* 탭한 직후 · 키보드가 다 올라온 뒤 두 번 맞춰 줍니다.
      기기에 따라 키보드 애니메이션이 끝나는 시점이 다릅니다. */
+  /* 키보드 애니메이션이 끝나는 시점이 기기마다 다릅니다.
+     탭한 뒤 두 번 나눠 확인합니다. */
   ta.addEventListener('focus', function () {
-    applyViewportHeight();
-    setTimeout(function () { applyViewportHeight(); chatScrollEnd(); }, 250);
-    setTimeout(function () { applyViewportHeight(); chatScrollEnd(); }, 600);
+    setTimeout(function () { applyViewportHeight(); chatScrollEnd(); }, 300);
+    setTimeout(function () { applyViewportHeight(); chatScrollEnd(); }, 650);
   });
 
   /* 넓은 화면에서만 Enter 로 보냅니다.
@@ -666,12 +677,12 @@ function logKinds(){
 
 async function loadLogs(force){
   var box = CFG.logBox || 'accessBody';
-  setHTML(box, '<div class="box-note">불러오는 중...</div>');
+  setHTML(box, '<div class="note">불러오는 중...</div>');
   try {
     await fetchLogs(force);
     logView(LOGVIEW || logKinds()[0]);
   } catch (e) {
-    setHTML(box, '<div class="box-note">' + esc(failMsg(e, '새로고침을 눌러주세요.')) + '</div>');
+    setHTML(box, '<div class="note err">' + esc(failMsg(e, '새로고침을 눌러주세요.')) + '</div>');
   }
 }
 
@@ -708,7 +719,7 @@ function logView(k){
 
   var box = CFG.logBox || 'accessBody';
   var list = LOGS.filter(function (l) { return l.kind === k; });
-  if (!list.length) { setHTML(box, '<div class="box-note">' + LOGTAB[k].empty + '</div>'); return; }
+  if (!list.length) { setHTML(box, '<div class="note">' + LOGTAB[k].empty + '</div>'); return; }
 
   var rows = list.map(function (l, i) {
     var cls = logResultClass(l.result);
