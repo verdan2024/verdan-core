@@ -1,4 +1,4 @@
-/*! verdan-core.css v1.1.5 — 버던 사내 웹앱 공통 스타일
+/*! verdan-core.css v1.1.6 — 버던 사내 웹앱 공통 스타일
     이 파일만 고치면 모든 앱의 디자인이 함께 바뀝니다.
     앱 고유 스타일은 각 앱 HTML 의 <style> 에 둡니다.
 
@@ -25,6 +25,12 @@
         화면을 고정한 뒤로 이 줄이 바닥에 영구히 붙어 자리를 잡아먹었다.
         버전은 로그인 화면 아래에서 볼 수 있다.
       · 안전영역(홈 인디케이터) 여백을 목록 안쪽으로 옮김
+
+    v1.1.5 → v1.1.6
+      · 코어 안에 직접 쓰던 색을 전부 토큰으로 뺐다
+        (--v-soft · --v-thead · --v-seg · --v-sum · --v-lb · --v-ph ·
+         --v-onink · --v-stale · --v-wm)
+        → 앱이 :root 값만 덮어쓰면 다크 모드가 된다 (인수인계 가이드)
 */
 
 /* ── 색 토큰 ─────────────────────────────
@@ -44,7 +50,20 @@
 
   /* 링크 — 팔레트에 없어 Slate Blue 를 그대로 씁니다. 밑줄로 구분합니다. */
   --v-link:#71869B;
-  --v-link-dark:#B2C58E;  /* 어두운 배경 위 링크 */
+  --v-link-dark:#B2C58E;  /* 짙은 말풍선 안의 링크 */
+
+  /* 면·글자 보조 토큰
+     ⚠️ 여기까지 토큰으로 빼 두어야 다크 모드 앱이 값만 바꿔 쓸 수 있습니다.
+        코어 안에 색을 직접 쓰면 어두운 배경에서 흰 덩어리로 튑니다. */
+  --v-soft:#FAFAF7;     /* 살짝 눌린 면 — 입력칸 · 인용 박스 */
+  --v-thead:#F2F1EC;    /* 표 머리 */
+  --v-seg:#EDEDE7;      /* 세그먼티드 컨트롤 바탕 */
+  --v-sum:#F2F1EF;      /* 접기(summary) 바탕 */
+  --v-lb:#4A4C46;       /* 입력 라벨 글자 */
+  --v-ph:#A9AAA3;       /* 아직 고르지 않은 값 */
+  --v-onink:#FFFFFF;    /* 짙은 바탕(헤더 · 주버튼 · 내 말풍선) 위 글자 */
+  --v-stale:#F0C9C6;    /* 헤더 갱신 실패 경고 */
+  --v-wm:#252721;       /* 워터마크 글자 */
 
   /* 상태 */
   --v-ok:#64815A;      --v-ok-bg:#EFF2EC;      --v-ok-line:#CFDAC6;
@@ -95,18 +114,18 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',Arial,sans-serif;backgrou
      display:flex;flex-direction:column;justify-content:center;align-items:center;
      padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));}
 #gate .box{width:100%;max-width:340px;background:var(--v-card);border-radius:16px;padding:28px 24px;
-     box-shadow:0 2px 12px rgba(37,39,33,.06);text-align:center;}
+     box-shadow:0 2px 12px rgba(37,39,33,.06);text-align:center;border:1px solid var(--v-line);}
 #gate .logo{font-size:34px;margin-bottom:10px;}
 #gate .logo img{width:44px;height:44px;object-fit:contain;}
 #gate h1{font-size:17px;color:var(--v-ink);margin-bottom:20px;}
 /* -webkit-user-select:text 가 없으면 독립 앱 모드에서 칸이 '선택만 되고 편집은 안 되는'
    상태로 빠져 키보드가 올라오지 않습니다. touch-action 은 탭을 확대로 오인하지 않게 합니다. */
 #gate input{width:100%;padding:13px 16px;border:1px solid var(--v-line);border-radius:10px;
-     font-size:16px;margin-bottom:10px;font-family:inherit;background:#FAFAF7;color:var(--v-txt);
+     font-size:16px;margin-bottom:10px;font-family:inherit;background:var(--v-soft);color:var(--v-txt);
      -webkit-user-select:text;user-select:text;touch-action:manipulation;}
 #gate input:focus{outline:none;border-color:var(--v-accent);background:var(--v-card);}
 #gate button{width:100%;padding:13px;border:none;border-radius:10px;background:var(--v-ink);
-     color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;}
+     color:var(--v-onink);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;}
 #gate button:disabled{opacity:.55;}
 #gateMsg{font-size:13px;color:var(--v-danger);margin-top:12px;min-height:18px;line-height:1.6;}
 #gateMsg.wait{color:var(--v-mute);}
@@ -120,18 +139,18 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',Arial,sans-serif;backgrou
 /* 헤더·탭은 스크롤되는 영역 바깥에 있으므로 어느 화면에서도 움직이지 않습니다.
    (sticky 가 아니라 아예 스크롤 대상이 아닙니다)
    상태바(시계·배터리) 아래로 파고들지 않도록 안전영역을 확보합니다. */
-#header{background:var(--v-ink);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
+#header{background:var(--v-ink);color:var(--v-onink);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
      display:flex;align-items:center;gap:10px;flex-shrink:0;z-index:30;}
 #header .icon{width:36px;height:36px;border-radius:50%;background:var(--v-accent);display:flex;
      align-items:center;justify-content:center;font-size:17px;flex-shrink:0;overflow:hidden;}
 #header .icon img{width:100%;height:100%;object-fit:cover;}
 #header .title{font-weight:700;font-size:14px;}
 #header .sub{font-size:11px;opacity:.6;margin-top:2px;}
-#header .sub.stale{opacity:1;color:#F0C9C6;font-weight:700;}
+#header .sub.stale{opacity:1;color:var(--v-stale);font-weight:700;}
 /* 이름 · 권한 — 배지가 아니라 그냥 글자입니다 */
 #header .who{margin-left:auto;font-size:11.5px;color:rgba(255,255,255,.72);white-space:nowrap;
      text-align:right;line-height:1.4;}
-#header .logoutBtn{margin-left:9px;font-size:11px;color:#fff;background:none;
+#header .logoutBtn{margin-left:9px;font-size:11px;color:var(--v-onink);background:none;
      border:1px solid rgba(255,255,255,.35);padding:5px 11px;border-radius:10px;
      white-space:nowrap;cursor:pointer;font-family:inherit;flex-shrink:0;}
 #header .logoutBtn:active{background:rgba(255,255,255,.12);}
@@ -154,13 +173,13 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',Arial,sans-serif;backgrou
 .card{background:var(--v-card);border:1px solid var(--v-line);border-radius:var(--v-radius);
       padding:14px;margin-bottom:12px;}
 .card h3{font-size:13px;color:var(--v-ink);margin-bottom:10px;}
-label.lb{display:block;font-size:12px;font-weight:700;color:#4A4C46;margin:10px 0 5px;}
+label.lb{display:block;font-size:12px;font-weight:700;color:var(--v-lb);margin:10px 0 5px;}
 select,input.f,button.f{width:100%;padding:12px;border:1px solid var(--v-line);border-radius:10px;
      font-size:16px;margin-bottom:9px;font-family:inherit;background:var(--v-card);
      color:var(--v-txt);touch-action:manipulation;}
 input.f{-webkit-user-select:text;user-select:text;}
 input.f:focus,select:focus,textarea.f:focus{outline:none;border-color:var(--v-accent);}
-button.f{background:var(--v-ink);color:#fff;border:none;font-weight:700;cursor:pointer;}
+button.f{background:var(--v-ink);color:var(--v-onink);border:none;font-weight:700;cursor:pointer;}
 button.ghost{background:var(--v-card);color:var(--v-ink);border:1px solid var(--v-line);}
 button.sm{width:auto;padding:9px 14px;font-size:13px;margin:0 6px 6px 0;border-radius:9px;}
 button:disabled{opacity:.55;}
@@ -175,7 +194,7 @@ select.fld, input.f.fld{width:100%;height:46px;padding:0 12px;margin-bottom:0;
 select.fld{background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23696C64' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'/%3e%3c/svg%3e");
   background-repeat:no-repeat;background-position:right 11px center;background-size:16px;
   padding-right:34px;}
-select.ph{color:#A9AAA3;}
+select.ph{color:var(--v-ph);}
 .lb2{font-size:11px;color:var(--v-mute);margin:9px 0 4px;}
 .lb2:first-child{margin-top:2px;}
 .rowline{display:flex;align-items:center;gap:10px;}
@@ -184,7 +203,7 @@ select.ph{color:#A9AAA3;}
      font-variant-numeric:tabular-nums;}
 
 /* ── 세그먼티드 컨트롤 ───────────────── */
-.seg{display:flex;gap:5px;background:#EDEDE7;border-radius:10px;padding:4px;margin-bottom:12px;
+.seg{display:flex;gap:5px;background:var(--v-seg);border-radius:10px;padding:4px;margin-bottom:12px;
      overflow-x:auto;}
 .seg button{flex:1;min-width:62px;padding:9px 4px;border:none;border-radius:7px;background:none;
      font-size:12px;font-weight:700;color:var(--v-mute);font-family:inherit;cursor:pointer;
@@ -212,7 +231,7 @@ select.ph{color:#A9AAA3;}
      padding:11px 14px;margin-bottom:12px;font-size:13px;color:var(--v-ok);line-height:1.8;}
 .box-note{background:var(--v-warn-bg);border:1px solid var(--v-warn-line);border-radius:10px;
      padding:11px 14px;margin-bottom:12px;font-size:12px;color:#8A6538;line-height:1.7;}
-.box2{background:#FAFAF7;border:1px solid var(--v-line);border-radius:10px;
+.box2{background:var(--v-soft);border:1px solid var(--v-line);border-radius:10px;
      padding:10px 12px;margin-top:10px;}
 
 /* ── 글자 ────────────────────────────── */
@@ -244,7 +263,7 @@ select.ph{color:#A9AAA3;}
 /* ── 표 ──────────────────────────────── */
 table{width:100%;border-collapse:collapse;font-size:13px;background:var(--v-card);}
 th{padding:8px 6px;text-align:center;font-size:11px;font-weight:600;color:var(--v-mute);
-   background:#F2F1EC;border-bottom:2px solid var(--v-line);white-space:nowrap;}
+   background:var(--v-thead);border-bottom:2px solid var(--v-line);white-space:nowrap;}
 td{padding:8px 6px;border-bottom:1px solid var(--v-line);}
 .tbl-wrap{overflow-x:auto;border:1px solid var(--v-line);border-radius:var(--v-radius);
      margin-bottom:12px;}
@@ -252,7 +271,7 @@ td{padding:8px 6px;border-bottom:1px solid var(--v-line);}
 /* ── 접기 ────────────────────────────── */
 details{margin-bottom:12px;}
 details summary{cursor:pointer;font-size:12px;font-weight:700;padding:9px 12px;border-radius:8px;
-     background:#F2F1EF;color:#4A4744;list-style:none;}
+     background:var(--v-sum);color:var(--v-txt);list-style:none;}
 details summary::-webkit-details-marker{display:none;}
 details summary::before{content:'▸ ';}
 details[open] summary::before{content:'▾ ';}
@@ -277,7 +296,7 @@ details .tbl-wrap{margin-top:8px;}
 .qa button{flex:1;min-width:74px;padding:10px 6px;font-size:12.5px;border-radius:9px;
    border:1px solid var(--v-line);background:var(--v-card);color:var(--v-ink);font-weight:700;
    font-family:inherit;cursor:pointer;}
-.qa button.pri{background:var(--v-ink);color:#fff;border:none;}
+.qa button.pri{background:var(--v-ink);color:var(--v-onink);border:none;}
 .qa button.no{color:var(--v-danger);border-color:var(--v-danger-line);}
 .qmsg{font-size:11.5px;padding:0 13px 10px;min-height:0;}
 .qmsg.err{color:var(--v-danger);} .qmsg.good{color:var(--v-ok);}
@@ -304,7 +323,7 @@ details .tbl-wrap{margin-top:8px;}
 #chatBody{display:flex;flex-direction:column;gap:10px;margin-bottom:12px;}
 .cmsg{max-width:90%;padding:11px 13px;border-radius:14px;font-size:13px;line-height:1.75;
       white-space:pre-wrap;word-break:break-word;}
-.cmsg.me{align-self:flex-end;background:var(--v-ink);color:#fff;border-bottom-right-radius:4px;}
+.cmsg.me{align-self:flex-end;background:var(--v-ink);color:var(--v-onink);border-bottom-right-radius:4px;}
 .cmsg.bot{align-self:flex-start;background:var(--v-card);border:1px solid var(--v-line);
           color:var(--v-txt);border-bottom-left-radius:4px;}
 /* AI 가 만든 답변 — 토큰이 소모된 답변임을 색으로 구분합니다 */
@@ -333,7 +352,7 @@ details .tbl-wrap{margin-top:8px;}
      -webkit-user-select:text;user-select:text;touch-action:manipulation;}
 #chatBar textarea:focus{outline:none;border-color:var(--v-accent);}
 #chatBar .send{flex:0 0 44px;width:44px;height:44px;padding:0;margin:0;border:none;border-radius:50%;
-     background:var(--v-ink);color:#fff;font-size:18px;font-weight:700;line-height:1;
+     background:var(--v-ink);color:var(--v-onink);font-size:18px;font-weight:700;line-height:1;
      font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 #chatBar .send:disabled{opacity:.4;}
 
@@ -348,7 +367,7 @@ details .tbl-wrap{margin-top:8px;}
 /* 접근로그 [더보기] — 질문과 답변을 나눠 보여줍니다 */
 .qa2{margin-top:10px;font-size:12.5px;line-height:1.75;}
 .qa2 b{display:block;font-size:11px;color:var(--v-mute);margin-bottom:3px;}
-.qa2 div{white-space:pre-wrap;word-break:break-word;background:#FAFAF7;
+.qa2 div{white-space:pre-wrap;word-break:break-word;background:var(--v-soft);
          border:1px solid var(--v-line);border-radius:8px;padding:9px 11px;}
 .qa2 a{color:var(--v-link);text-decoration:underline;word-break:break-all;}
 
@@ -406,5 +425,5 @@ details .tbl-wrap{margin-top:8px;}
    캡쳐를 막을 수는 없으므로, 캡쳐된 이미지에 누가 언제 열었는지가 함께 찍히도록 합니다.
    pointer-events:none 이라 아래 표의 탭·스크롤을 방해하지 않습니다. */
 #wm{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;display:none;}
-#wm span{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;color:var(--v-ink);
+#wm span{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;color:var(--v-wm);
     opacity:var(--wm-op,.05);transform:rotate(-30deg);}
