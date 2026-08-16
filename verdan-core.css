@@ -61,9 +61,13 @@
 
    touch-action:manipulation 은 더블탭 확대를 막습니다.
    overscroll-behavior:none 은 끝까지 당겼을 때 딸려 오는 반동을 막습니다. */
-html{height:100%;}
+html{height:100%;overflow:hidden;}
+/* body 를 화면에 못박습니다(position:fixed).
+   overflow:hidden 만으로는 iOS 에서 문서가 위아래로 밀려 고무줄 반동이 남습니다.
+   높이와 위치는 코어 JS 가 "실제 보이는 영역"에 맞춰 넣습니다. */
 body{font-family:'Apple SD Gothic Neo','Malgun Gothic',Arial,sans-serif;background:var(--v-bg);
-     color:var(--v-txt);height:100%;overflow:hidden;display:flex;flex-direction:column;
+     color:var(--v-txt);position:fixed;top:0;left:0;width:100%;height:100%;
+     overflow:hidden;display:flex;flex-direction:column;
      overscroll-behavior:none;touch-action:manipulation;
      -webkit-text-size-adjust:100%;}
 
@@ -92,9 +96,9 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',Arial,sans-serif;backgrou
 #gate .hint{font-size:11px;color:var(--v-mute);opacity:.85;margin-top:10px;line-height:1.6;}
 
 /* ── 앱 뼈대 ─────────────────────────── */
-/* 높이는 코어 JS 가 실제 보이는 높이(visualViewport)로 채웁니다.
-   그래야 키보드가 올라와도 입력칸이 키보드 뒤로 숨지 않습니다. */
-#app{display:none;flex-direction:column;height:100%;overflow:hidden;}
+/* 높이는 body 가 정합니다. 여기서는 남은 자리를 채우기만 합니다.
+   min-height:0 이 없으면 안쪽 목록이 스크롤되지 않고 밖으로 넘칩니다. */
+#app{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden;}
 
 /* 헤더·탭은 스크롤되는 영역 바깥에 있으므로 어느 화면에서도 움직이지 않습니다.
    (sticky 가 아니라 아예 스크롤 대상이 아닙니다)
