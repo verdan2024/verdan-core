@@ -1,4 +1,4 @@
-/*! verdan-core.js v1.1.3 — 버던 사내 웹앱 공통 코어
+/*! verdan-core.js v1.1.4 — 버던 사내 웹앱 공통 코어
  *
  *  이 파일은 공개 저장소에 올라갑니다. 비밀번호 · Apps Script URL 등
  *  비밀에 해당하는 값은 절대 여기에 두지 마세요. 전부 앱 쪽 cfg 로 넘깁니다.
@@ -30,11 +30,16 @@
  *  v1.1.2 → v1.1.3
  *   · "불러오는 중..." · "기록이 없습니다" 를 상자(.box-note) 대신
  *     글자만 가운데 두는 .note 로 바꿈
+ *
+ *  v1.1.3 → v1.1.4  (긴급 수정)
+ *   · v1.1.2 에서 코드 구간을 정리하다 watermark() 함수를 통째로 지웠음.
+ *     맨 아래에서 없는 함수를 참조해 파일이 로드 즉시 죽고 화면이 하얗게 떴다.
+ *     함수를 되살렸다. ⚠️ v1.1.2 · v1.1.3 은 절대 쓰지 말 것.
  */
 (function (global) {
 'use strict';
 
-var CORE_VERSION = '1.1.3';
+var CORE_VERSION = '1.1.4';
 
 /* ── 코어가 소유하는 문구 ───────────────────────────
    앱마다 다르게 쓰던 문구를 여기 한 곳으로 모았습니다.
@@ -267,6 +272,26 @@ if (window.visualViewport) {
 }
 /* 키보드가 내려간 뒤 남은 자리를 정리합니다 */
 document.addEventListener('focusout', function () { setTimeout(applyViewportHeight, 300); });
+
+/* ── 워터마크 ───────────────────────────────────────
+   화면을 덮는 격자로 '이름 · 접속시각'을 반복해 깔아 둡니다.
+   캡쳐를 막을 수는 없으므로, 캡쳐된 이미지에 누가 언제 열었는지가
+   함께 찍히도록 하는 장치입니다. */
+function watermark(on){
+  var e = $('wm');
+  if (!e) return;
+  if (!on || !USER) { e.style.display = 'none'; e.innerHTML = ''; return; }
+  var d = new Date(), p2 = function (x) { return String(x).padStart(2, '0'); };
+  var txt = USER + ' · ' + d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) +
+            ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+  var h = '';
+  for (var y = -120; y < window.innerHeight + 200; y += 130)
+    for (var x = -180; x < window.innerWidth + 240; x += 210)
+      h += '<span style="left:' + x + 'px;top:' + y + 'px">' + esc(txt) + '</span>';
+  e.style.setProperty('--wm-op', (CFG && CFG.wmOpacity) || 0.05);
+  e.innerHTML = h;
+  e.style.display = 'block';
+}
 
 var wmT = null;
 window.addEventListener('resize', function () {
